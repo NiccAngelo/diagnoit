@@ -6,6 +6,8 @@ use Illuminate\Database\Eloquent\Model;
 
 class SessionQuestionAsked extends Model
 {
+    protected $table = 'session_questions_asked';
+
     protected $fillable = ['session_id', 'question_id', 'answer_given', 'asked_at'];
 
     protected $casts = [
