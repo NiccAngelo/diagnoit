@@ -1,22 +1,31 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import axios from 'axios'
 
 const API_BASE = 'http://127.0.0.1:8000/api'
 
 function App() {
+  const [categories, setCategories] = useState([])
+  const [categoryId, setCategoryId] = useState(null)
   const [description, setDescription] = useState('')
   const [loading, setLoading] = useState(false)
   const [session, setSession] = useState(null)
   const [error, setError] = useState(null)
   const [answering, setAnswering] = useState(false)
 
+  useEffect(() => {
+    axios.get(`${API_BASE}/categories`).then((res) => {
+      setCategories(res.data)
+      if (res.data.length > 0) setCategoryId(res.data[0].id)
+    })
+  }, [])
+
   const startDiagnosis = async () => {
-    if (!description.trim()) return
+    if (!description.trim() || !categoryId) return
     setLoading(true)
     setError(null)
     try {
       const res = await axios.post(`${API_BASE}/diagnostic-sessions`, {
-        category_id: 1,
+        category_id: categoryId,
         initial_description: description,
       })
       setSession(res.data)
@@ -65,10 +74,26 @@ function App() {
 
         {!session && (
           <>
+            <div className="flex gap-2 mb-4">
+              {categories.map((cat) => (
+                <button
+                  key={cat.id}
+                  onClick={() => setCategoryId(cat.id)}
+                  className={`px-4 py-2 rounded-full text-sm font-medium border transition ${
+                    categoryId === cat.id
+                      ? 'bg-blue-600 text-white border-blue-600'
+                      : 'bg-white text-slate-600 border-slate-300 hover:border-blue-400'
+                  }`}
+                >
+                  {cat.name}
+                </button>
+              ))}
+            </div>
+
             <textarea
               className="w-full border border-slate-300 rounded-lg p-3 text-slate-700 focus:outline-none focus:ring-2 focus:ring-blue-500 resize-none"
               rows={4}
-              placeholder="My PC turns on but there's no display. The fans are spinning."
+              placeholder="Describe what's happening..."
               value={description}
               onChange={(e) => setDescription(e.target.value)}
             />
@@ -86,7 +111,7 @@ function App() {
         {error && <p className="text-red-600 mt-4">{error}</p>}
 
         {session && (
-          <div className={!session ? '' : 'pt-2'}>
+          <div>
             <div className="flex items-center justify-between mb-4">
               <h2 className="text-lg font-semibold text-slate-800">
                 Diagnostic Session #{session.session.id}
