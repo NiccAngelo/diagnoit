@@ -7,7 +7,8 @@ use App\Http\Controllers\Api\DiagnosticSessionController;
 use Illuminate\Support\Facades\Route;
 use App\Http\Controllers\Api\Admin\CategoryAdminController;
 use App\Http\Controllers\Api\Admin\CauseAdminController;
-
+use App\Http\Controllers\Api\Admin\ArticleAdminController;
+use App\Http\Controllers\Api\Admin\TroubleshootingStepAdminController;
 // Public routes
 Route::post('/register', [AuthController::class, 'register']);
 Route::post('/login', [AuthController::class, 'login']);
@@ -15,6 +16,11 @@ Route::get('/categories', [CategoryController::class, 'index']);
 Route::middleware(['auth:sanctum', 'admin'])->prefix('admin')->group(function () {
     Route::apiResource('categories', CategoryAdminController::class);
     Route::apiResource('causes', CauseAdminController::class);
+    Route::apiResource('articles', ArticleAdminController::class)->except(['update']);
+    Route::patch('articles/{article}', [ArticleAdminController::class, 'update']);
+    Route::post('steps', [TroubleshootingStepAdminController::class, 'store']);
+    Route::patch('steps/{troubleshootingStep}', [TroubleshootingStepAdminController::class, 'update']);
+    Route::delete('steps/{troubleshootingStep}', [TroubleshootingStepAdminController::class, 'destroy']);
 });
 // Protected routes — require a valid Sanctum token
 Route::middleware('auth:sanctum')->group(function () {
