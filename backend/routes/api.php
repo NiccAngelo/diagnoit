@@ -5,12 +5,17 @@ use App\Http\Controllers\Api\CategoryController;
 use App\Http\Controllers\Api\ClassificationController;
 use App\Http\Controllers\Api\DiagnosticSessionController;
 use Illuminate\Support\Facades\Route;
+use App\Http\Controllers\Api\Admin\CategoryAdminController;
+use App\Http\Controllers\Api\Admin\CauseAdminController;
 
 // Public routes
 Route::post('/register', [AuthController::class, 'register']);
 Route::post('/login', [AuthController::class, 'login']);
 Route::get('/categories', [CategoryController::class, 'index']);
-
+Route::middleware(['auth:sanctum', 'admin'])->prefix('admin')->group(function () {
+    Route::apiResource('categories', CategoryAdminController::class);
+    Route::apiResource('causes', CauseAdminController::class);
+});
 // Protected routes — require a valid Sanctum token
 Route::middleware('auth:sanctum')->group(function () {
     Route::post('/diagnostic-sessions/{session}/feedback', [DiagnosticSessionController::class, 'feedback']);
