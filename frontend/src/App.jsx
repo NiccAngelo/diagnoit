@@ -6,12 +6,18 @@ const API_BASE = 'http://127.0.0.1:8000/api'
 function App() {
   const [user, setUser] = useState(null)
   const [token, setToken] = useState(null)
+  const [adminCategories, setAdminCategories] = useState([])
+  const [adminCauses, setAdminCauses] = useState([])
+  const [adminLoading, setAdminLoading] = useState(false)
+  const [selectedCategoryId, setSelectedCategoryId] = useState(null)
+  const [newCategory, setNewCategory] = useState({ name: '', slug: '' })
+  const [newCause, setNewCause] = useState({ name: '', description: '', base_prior: '' })
 
   const [authMode, setAuthMode] = useState('login') // 'login' or 'register'
   const [authForm, setAuthForm] = useState({ name: '', email: '', password: '', password_confirmation: '' })
   const [authError, setAuthError] = useState(null)
   const [authLoading, setAuthLoading] = useState(false)
-  const [view, setView] = useState('diagnose') // 'diagnose' or 'history'
+  const [view, setView] = useState('diagnose') // 'diagnose' | 'history' | 'admin'
   const [history, setHistory] = useState([])
   const [historyLoading, setHistoryLoading] = useState(false)
 
@@ -58,6 +64,76 @@ function App() {
     setUser(null)
     setToken(null)
     setSession(null)
+  }
+
+  const loadAdminCategories = async () => {
+    setView('admin')
+    setAdminLoading(true)
+    try {
+      const res = await axios.get(`${API_BASE}/admin/categories`, { headers: authHeaders })
+      setAdminCategories(res.data)
+    } catch (err) {
+      console.error(err)
+    } finally {
+      setAdminLoading(false)
+    }
+  }
+
+  const loadAdminCauses = async (categoryId) => {
+    setSelectedCategoryId(categoryId)
+    try {
+      const res = await axios.get(`${API_BASE}/admin/causes?category_id=${categoryId}`, { headers: authHeaders })
+      setAdminCauses(res.data)
+    } catch (err) {
+      console.error(err)
+    }
+  }
+
+  const createCategory = async () => {
+    if (!newCategory.name.trim() || !newCategory.slug.trim()) return
+    try {
+      await axios.post(`${API_BASE}/admin/categories`, newCategory, { headers: authHeaders })
+      setNewCategory({ name: '', slug: '' })
+      loadAdminCategories()
+    } catch (err) {
+      console.error(err.response?.data)
+    }
+  }
+
+  const deleteCategory = async (id) => {
+    if (!confirm('Delete this category and everything under it?')) return
+    try {
+      await axios.delete(`${API_BASE}/admin/categories/${id}`, { headers: authHeaders })
+      loadAdminCategories()
+      if (selectedCategoryId === id) setSelectedCategoryId(null)
+    } catch (err) {
+      console.error(err)
+    }
+  }
+
+  const createCause = async () => {
+    if (!newCause.name.trim() || !newCause.base_prior) return
+    try {
+      await axios.post(
+        `${API_BASE}/admin/causes`,
+        { ...newCause, category_id: selectedCategoryId, base_prior: parseFloat(newCause.base_prior) },
+        { headers: authHeaders }
+      )
+      setNewCause({ name: '', description: '', base_prior: '' })
+      loadAdminCauses(selectedCategoryId)
+    } catch (err) {
+      console.error(err.response?.data)
+    }
+  }
+
+  const deleteCause = async (id) => {
+    if (!confirm('Delete this cause?')) return
+    try {
+      await axios.delete(`${API_BASE}/admin/causes/${id}`, { headers: authHeaders })
+      loadAdminCauses(selectedCategoryId)
+    } catch (err) {
+      console.error(err)
+    }
   }
 
   const loadHistory = async () => {
@@ -233,12 +309,21 @@ function App() {
         <div className="flex items-center justify-between mb-1">
           <h1 className="text-2xl font-bold text-slate-800">IT Diagnostic Assistant</h1>
           <div className="flex items-center gap-3">
-            <button
-              onClick={() => (view === 'history' ? setView('diagnose') : loadHistory())}
-              className="text-sm text-blue-600 hover:text-blue-800"
-            >
-              {view === 'history' ? 'New diagnosis' : 'History'}
-            </button>
+            {view !== 'diagnose' && (
+              <button onClick={() => setView('diagnose')} className="text-sm text-blue-600 hover:text-blue-800">
+                New diagnosis
+              </button>
+            )}
+            {view === 'diagnose' && (
+              <button onClick={loadHistory} className="text-sm text-blue-600 hover:text-blue-800">
+                History
+              </button>
+            )}
+            {user.role === 'admin' && view !== 'admin' && (
+              <button onClick={loadAdminCategories} className="text-sm text-purple-600 hover:text-purple-800">
+                Admin
+              </button>
+            )}
             <button onClick={logout} className="text-sm text-slate-400 hover:text-slate-600">
               Log out
             </button>
@@ -277,6 +362,121 @@ function App() {
                 </p>
               </button>
             ))}
+          </div>
+        )}
+
+        {view === 'admin' && (
+          <div>
+            <h2 className="text-lg font-semibold text-slate-800 mb-4">Knowledge Base Admin</h2>
+
+            {adminLoading && <p className="text-slate-400 text-sm">Loading...</p>}
+
+            <div className="space-y-2 mb-4">
+              {adminCategories.map((cat) => (
+                <div
+                  key={cat.id}
+                  className={`border rounded-lg p-3 cursor-pointer transition ${
+                    selectedCategoryId === cat.id ? 'border-purple-400 bg-purple-50' : 'border-slate-200 hover:border-purple-300'
+                  }`}
+                  onClick={() => loadAdminCauses(cat.id)}
+                >
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <span className="font-medium text-slate-800">{cat.name}</span>
+                      <span className="text-xs text-slate-400 ml-2">
+                        {cat.causes_count} causes · {cat.questions_count} questions
+                      </span>
+                    </div>
+                    <button
+                      onClick={(e) => { e.stopPropagation(); deleteCategory(cat.id) }}
+                      className="text-xs text-red-500 hover:text-red-700"
+                    >
+                      Delete
+                    </button>
+                  </div>
+                </div>
+              ))}
+            </div>
+
+            <div className="border border-dashed border-slate-300 rounded-lg p-3 mb-6">
+              <p className="text-sm font-medium text-slate-600 mb-2">Add category</p>
+              <div className="flex gap-2">
+                <input
+                  type="text"
+                  placeholder="Name"
+                  className="flex-1 border border-slate-300 rounded p-2 text-sm"
+                  value={newCategory.name}
+                  onChange={(e) => setNewCategory({ ...newCategory, name: e.target.value })}
+                />
+                <input
+                  type="text"
+                  placeholder="slug"
+                  className="flex-1 border border-slate-300 rounded p-2 text-sm"
+                  value={newCategory.slug}
+                  onChange={(e) => setNewCategory({ ...newCategory, slug: e.target.value })}
+                />
+                <button onClick={createCategory} className="bg-purple-600 hover:bg-purple-700 text-white text-sm px-3 rounded">
+                  Add
+                </button>
+              </div>
+            </div>
+
+            {selectedCategoryId && (
+              <div>
+                <h3 className="text-sm font-semibold text-slate-700 mb-2">
+                  Causes for {adminCategories.find((c) => c.id === selectedCategoryId)?.name}
+                </h3>
+
+                <div className="space-y-2 mb-4">
+                  {adminCauses.map((cause) => (
+                    <div key={cause.id} className="border border-slate-200 rounded-lg p-3 flex items-center justify-between">
+                      <div>
+                        <span className="font-medium text-slate-800 text-sm">{cause.name}</span>
+                        <span className="text-xs text-slate-400 ml-2">
+                          prior: {(cause.base_prior * 100).toFixed(0)}%
+                        </span>
+                      </div>
+                      <button onClick={() => deleteCause(cause.id)} className="text-xs text-red-500 hover:text-red-700">
+                        Delete
+                      </button>
+                    </div>
+                  ))}
+                </div>
+
+                <div className="border border-dashed border-slate-300 rounded-lg p-3">
+                  <p className="text-sm font-medium text-slate-600 mb-2">Add cause</p>
+                  <div className="grid grid-cols-2 gap-2 mb-2">
+                    <input
+                      type="text"
+                      placeholder="Name"
+                      className="border border-slate-300 rounded p-2 text-sm"
+                      value={newCause.name}
+                      onChange={(e) => setNewCause({ ...newCause, name: e.target.value })}
+                    />
+                    <input
+                      type="number"
+                      step="0.01"
+                      min="0"
+                      max="1"
+                      placeholder="Base prior (0-1)"
+                      className="border border-slate-300 rounded p-2 text-sm"
+                      value={newCause.base_prior}
+                      onChange={(e) => setNewCause({ ...newCause, base_prior: e.target.value })}
+                    />
+                  </div>
+                  <textarea
+                    placeholder="Description"
+                    className="w-full border border-slate-300 rounded p-2 text-sm mb-2"
+                    rows={2}
+                    value={newCause.description}
+                    onChange={(e) => setNewCause({ ...newCause, description: e.target.value })}
+                  />
+                  <button onClick={createCause} className="bg-purple-600 hover:bg-purple-700 text-white text-sm px-3 py-1.5 rounded">
+                    Add cause
+                  </button>
+                </div>
+              </div>
+            )}
           </div>
         )}
 
