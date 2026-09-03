@@ -7,6 +7,7 @@ use App\Models\DiagnosticSession;
 use App\Models\Question;
 use App\Services\DiagnosticEngine;
 use Illuminate\Http\Request;
+use App\Models\Feedback;
 
 class DiagnosticSessionController extends Controller
 {
@@ -74,6 +75,29 @@ class DiagnosticSessionController extends Controller
         $question = Question::findOrFail($validated['question_id']);
 
         $this->engine->answerQuestion($session, $question, $validated['answer']);
+
+        return $this->sessionState($session);
+    }
+    /**
+ * Submit feedback for a session and mark it resolved/escalated.
+ */
+    public function feedback(Request $request, DiagnosticSession $session)
+    {
+        $validated = $request->validate([
+            'resolved' => 'required|boolean',
+            'comment' => 'nullable|string',
+        ]);
+
+        Feedback::create([
+            'session_id' => $session->id,
+            'rating' => $validated['resolved'] ? 1 : 0,
+            'comment' => $validated['comment'] ?? null,
+        ]);
+
+        $session->update([
+            'status' => $validated['resolved'] ? 'resolved' : 'escalated',
+            'resolved_at' => now(),
+        ]);
 
         return $this->sessionState($session);
     }

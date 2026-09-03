@@ -13,6 +13,7 @@ Route::get('/categories', [CategoryController::class, 'index']);
 
 // Protected routes — require a valid Sanctum token
 Route::middleware('auth:sanctum')->group(function () {
+    Route::post('/diagnostic-sessions/{session}/feedback', [DiagnosticSessionController::class, 'feedback']);
     Route::post('/logout', [AuthController::class, 'logout']);
     Route::get('/me', [AuthController::class, 'me']);
 

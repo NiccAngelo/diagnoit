@@ -131,6 +131,19 @@ function App() {
     }
   }
 
+  const submitFeedback = async (resolved) => {
+    try {
+      const res = await axios.post(
+        `${API_BASE}/diagnostic-sessions/${session.session.id}/feedback`,
+        { resolved },
+        { headers: authHeaders }
+      )
+      setSession(res.data)
+    } catch (err) {
+      console.error(err)
+    }
+  }
+
   const reset = () => {
     setSession(null)
     setDescription('')
@@ -252,6 +265,7 @@ function App() {
                   <span className={`text-xs px-2 py-0.5 rounded-full ${
                     item.status === 'resolved' ? 'bg-green-100 text-green-700' :
                     item.status === 'active' ? 'bg-yellow-100 text-yellow-700' :
+                    item.status === 'escalated' ? 'bg-red-100 text-red-700' :
                     'bg-slate-100 text-slate-600'
                   }`}>
                     {item.status}
@@ -358,7 +372,7 @@ function App() {
                       <h3 className="font-semibold text-green-800 mb-3">
                         {session.recommended_article.title}
                       </h3>
-                      <ol className="space-y-2">
+                      <ol className="space-y-2 mb-4">
                         {session.recommended_article.steps.map((step) => (
                           <li key={step.id} className="text-sm text-slate-700 flex gap-2">
                             <span className="font-semibold text-green-700">{step.order}.</span>
@@ -366,6 +380,32 @@ function App() {
                           </li>
                         ))}
                       </ol>
+
+                      {session.session.status === 'active' ? (
+                        <div className="border-t border-green-200 pt-3">
+                          <p className="text-sm font-medium text-slate-700 mb-2">Did this resolve it?</p>
+                          <div className="flex gap-3">
+                            <button
+                              onClick={() => submitFeedback(true)}
+                              className="flex-1 bg-white border border-green-300 hover:bg-green-100 text-green-700 font-medium py-2 rounded-lg transition"
+                            >
+                              Yes, fixed!
+                            </button>
+                            <button
+                              onClick={() => submitFeedback(false)}
+                              className="flex-1 bg-white border border-red-300 hover:bg-red-100 text-red-700 font-medium py-2 rounded-lg transition"
+                            >
+                              No, still broken
+                            </button>
+                          </div>
+                        </div>
+                      ) : (
+                        <p className="text-sm text-slate-500 border-t border-green-200 pt-3">
+                          {session.session.status === 'resolved'
+                            ? '✅ Marked as resolved. Thanks for the feedback!'
+                            : '⚠️ Marked as escalated — this may need further help.'}
+                        </p>
+                      )}
                     </div>
                   )
                 )}
