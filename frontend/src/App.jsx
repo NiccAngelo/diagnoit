@@ -4,6 +4,14 @@ import axios from 'axios'
 const API_BASE = 'http://127.0.0.1:8000/api'
 
 function App() {
+  const [user, setUser] = useState(null)
+  const [token, setToken] = useState(null)
+
+  const [authMode, setAuthMode] = useState('login') // 'login' or 'register'
+  const [authForm, setAuthForm] = useState({ name: '', email: '', password: '', password_confirmation: '' })
+  const [authError, setAuthError] = useState(null)
+  const [authLoading, setAuthLoading] = useState(false)
+
   const [description, setDescription] = useState('')
   const [loading, setLoading] = useState(false)
   const [session, setSession] = useState(null)
@@ -11,22 +19,61 @@ function App() {
   const [answering, setAnswering] = useState(false)
   const [detectedCategory, setDetectedCategory] = useState(null)
 
+  const authHeaders = token ? { Authorization: `Bearer ${token}` } : {}
+
+  const handleAuthSubmit = async () => {
+    setAuthLoading(true)
+    setAuthError(null)
+    try {
+      const endpoint = authMode === 'login' ? 'login' : 'register'
+      const payload = authMode === 'login'
+        ? { email: authForm.email, password: authForm.password }
+        : authForm
+
+      const res = await axios.post(`${API_BASE}/${endpoint}`, payload, {
+        headers: { Accept: 'application/json' },
+      })
+
+      setUser(res.data.user)
+      setToken(res.data.token)
+    } catch (err) {
+      const message = err.response?.data?.message
+        || Object.values(err.response?.data?.errors || {})[0]?.[0]
+        || 'Something went wrong.'
+      setAuthError(message)
+    } finally {
+      setAuthLoading(false)
+    }
+  }
+
+  const logout = async () => {
+    try {
+      await axios.post(`${API_BASE}/logout`, {}, { headers: authHeaders })
+    } catch (err) {
+      // ignore — logging out client-side regardless
+    }
+    setUser(null)
+    setToken(null)
+    setSession(null)
+  }
+
   const startDiagnosis = async () => {
     if (!description.trim()) return
     setLoading(true)
     setError(null)
     try {
-      // 1. Classify the description into a category
-      const classifyRes = await axios.post(`${API_BASE}/classify`, {
-        description,
-      })
+      const classifyRes = await axios.post(
+        `${API_BASE}/classify`,
+        { description },
+        { headers: authHeaders }
+      )
       setDetectedCategory(classifyRes.data)
 
-      // 2. Start the session using the detected category
-      const res = await axios.post(`${API_BASE}/diagnostic-sessions`, {
-        category_id: classifyRes.data.category_id,
-        initial_description: description,
-      })
+      const res = await axios.post(
+        `${API_BASE}/diagnostic-sessions`,
+        { category_id: classifyRes.data.category_id, initial_description: description },
+        { headers: authHeaders }
+      )
       setSession(res.data)
     } catch (err) {
       setError('Something went wrong starting the diagnosis.')
@@ -43,10 +90,8 @@ function App() {
     try {
       const res = await axios.post(
         `${API_BASE}/diagnostic-sessions/${session.session.id}/answer`,
-        {
-          question_id: session.next_question.id,
-          answer: answerValue,
-        }
+        { question_id: session.next_question.id, answer: answerValue },
+        { headers: authHeaders }
       )
       setSession(res.data)
     } catch (err) {
@@ -64,13 +109,91 @@ function App() {
     setDetectedCategory(null)
   }
 
+  // ---- Not logged in: show auth form ----
+  if (!user) {
+    return (
+      <div className="min-h-screen bg-slate-50 flex items-center justify-center p-6">
+        <div className="w-full max-w-sm bg-white rounded-2xl shadow-lg p-8">
+          <h1 className="text-2xl font-bold text-slate-800 mb-1">
+            IT Diagnostic Assistant
+          </h1>
+          <p className="text-slate-500 mb-6">
+            {authMode === 'login' ? 'Log in to continue' : 'Create an account'}
+          </p>
+
+          {authMode === 'register' && (
+            <input
+              type="text"
+              placeholder="Name"
+              className="w-full border border-slate-300 rounded-lg p-3 mb-3 focus:outline-none focus:ring-2 focus:ring-blue-500"
+              value={authForm.name}
+              onChange={(e) => setAuthForm({ ...authForm, name: e.target.value })}
+            />
+          )}
+
+          <input
+            type="email"
+            placeholder="Email"
+            className="w-full border border-slate-300 rounded-lg p-3 mb-3 focus:outline-none focus:ring-2 focus:ring-blue-500"
+            value={authForm.email}
+            onChange={(e) => setAuthForm({ ...authForm, email: e.target.value })}
+          />
+
+          <input
+            type="password"
+            placeholder="Password"
+            className="w-full border border-slate-300 rounded-lg p-3 mb-3 focus:outline-none focus:ring-2 focus:ring-blue-500"
+            value={authForm.password}
+            onChange={(e) => setAuthForm({ ...authForm, password: e.target.value })}
+          />
+
+          {authMode === 'register' && (
+            <input
+              type="password"
+              placeholder="Confirm password"
+              className="w-full border border-slate-300 rounded-lg p-3 mb-3 focus:outline-none focus:ring-2 focus:ring-blue-500"
+              value={authForm.password_confirmation}
+              onChange={(e) => setAuthForm({ ...authForm, password_confirmation: e.target.value })}
+            />
+          )}
+
+          {authError && <p className="text-red-600 text-sm mb-3">{authError}</p>}
+
+          <button
+            onClick={handleAuthSubmit}
+            disabled={authLoading}
+            className="w-full bg-blue-600 hover:bg-blue-700 disabled:bg-blue-300 text-white font-semibold py-3 rounded-lg transition"
+          >
+            {authLoading ? 'Please wait...' : authMode === 'login' ? 'Log In' : 'Register'}
+          </button>
+
+          <button
+            onClick={() => {
+              setAuthMode(authMode === 'login' ? 'register' : 'login')
+              setAuthError(null)
+            }}
+            className="w-full text-sm text-slate-500 hover:text-slate-700 mt-4"
+          >
+            {authMode === 'login'
+              ? "Don't have an account? Register"
+              : 'Already have an account? Log in'}
+          </button>
+        </div>
+      </div>
+    )
+  }
+
+  // ---- Logged in: show diagnosis UI ----
   return (
     <div className="min-h-screen bg-slate-50 flex items-center justify-center p-6">
       <div className="w-full max-w-lg bg-white rounded-2xl shadow-lg p-8">
-        <h1 className="text-2xl font-bold text-slate-800 mb-1">
-          IT Diagnostic Assistant
-        </h1>
-        <p className="text-slate-500 mb-6">What's wrong?</p>
+        <div className="flex items-center justify-between mb-1">
+          <h1 className="text-2xl font-bold text-slate-800">IT Diagnostic Assistant</h1>
+          <button onClick={logout} className="text-sm text-slate-400 hover:text-slate-600">
+            Log out
+          </button>
+        </div>
+        <p className="text-slate-500 mb-6">Hi {user.name} — what's wrong?</p>
 
         {!session && (
           <>
@@ -100,10 +223,7 @@ function App() {
               <h2 className="text-lg font-semibold text-slate-800">
                 Diagnostic Session #{session.session.id}
               </h2>
-              <button
-                onClick={reset}
-                className="text-sm text-slate-400 hover:text-slate-600"
-              >
+              <button onClick={reset} className="text-sm text-slate-400 hover:text-slate-600">
                 Start over
               </button>
             </div>
@@ -138,13 +258,9 @@ function App() {
 
             {session.next_question ? (
               <div className="bg-slate-50 border border-slate-200 rounded-lg p-4">
-                <p className="font-medium text-slate-800 mb-3">
-                  {session.next_question.prompt}
-                </p>
+                <p className="font-medium text-slate-800 mb-3">{session.next_question.prompt}</p>
                 {session.next_question.explanation_text && (
-                  <p className="text-xs text-slate-500 mb-3">
-                    {session.next_question.explanation_text}
-                  </p>
+                  <p className="text-xs text-slate-500 mb-3">{session.next_question.explanation_text}</p>
                 )}
                 <div className="flex gap-3">
                   <button
@@ -172,9 +288,7 @@ function App() {
                   <ol className="space-y-2">
                     {session.recommended_article.steps.map((step) => (
                       <li key={step.id} className="text-sm text-slate-700 flex gap-2">
-                        <span className="font-semibold text-green-700">
-                          {step.order}.
-                        </span>
+                        <span className="font-semibold text-green-700">{step.order}.</span>
                         {step.instruction}
                       </li>
                     ))}

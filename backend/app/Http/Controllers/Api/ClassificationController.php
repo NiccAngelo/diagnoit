@@ -35,8 +35,8 @@ If the description doesn't clearly match any category, pick the closest one and 
 PROMPT;
 
         try {
-            $response = Http::timeout(15)->post(
-               'https://generativelanguage.googleapis.com/v1beta/models/gemini-3.6-flash:generateContent?key=' . config('services.gemini.key'),
+            $response = Http::timeout(20)->retry(2, 500)->post(
+                'https://generativelanguage.googleapis.com/v1beta/models/gemini-3.6-flash:generateContent?key=' . config('services.gemini.key'),
                 [
                     'contents' => [
                         ['parts' => [['text' => $prompt]]],
