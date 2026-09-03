@@ -24,16 +24,33 @@ class DiagnosticSessionController extends Controller
             'initial_description' => 'required|string',
         ]);
 
-        $session = DiagnosticSession::create([
-            'user_id' => $request->user()?->id ?? 1, // fallback to user 1 until auth is wired up
-            'category_id' => $validated['category_id'],
-            'initial_description' => $validated['initial_description'],
-            'status' => 'active',
-        ]);
-
+    $session = DiagnosticSession::create([
+        'user_id' => $request->user()->id, 
+        'category_id' => $validated['category_id'],
+        'initial_description' => $validated['initial_description'],
+        'status' => 'active',
+    ]);
         $this->engine->startSession($session);
 
         return $this->sessionState($session);
+    }
+    /**
+ * List the authenticated user's diagnostic sessions.
+ */
+    public function index(Request $request)
+    {
+        $sessions = DiagnosticSession::where('user_id', $request->user()->id)
+            ->with('category')
+            ->latest()
+            ->get();
+
+        return response()->json($sessions->map(fn ($session) => [
+            'id' => $session->id,
+            'category' => $session->category->name,
+            'initial_description' => $session->initial_description,
+            'status' => $session->status,
+            'created_at' => $session->created_at,
+        ]));
     }
 
     /**
