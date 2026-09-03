@@ -13,6 +13,16 @@ function App() {
   const [newCategory, setNewCategory] = useState({ name: '', slug: '' })
   const [newCause, setNewCause] = useState({ name: '', description: '', base_prior: '' })
 
+  // ---- Articles / Steps admin state ----
+  const [selectedCauseId, setSelectedCauseId] = useState(null)
+  const [adminArticles, setAdminArticles] = useState([])
+  const [adminArticlesLoading, setAdminArticlesLoading] = useState(false)
+  const [newArticle, setNewArticle] = useState({ title: '', symptoms_summary: '', status: 'draft' })
+  const [expandedArticleId, setExpandedArticleId] = useState(null)
+  const [newStep, setNewStep] = useState({ instruction: '', media_url: '', requires_confirmation: true })
+  const [editingArticleId, setEditingArticleId] = useState(null)
+  const [editArticleForm, setEditArticleForm] = useState({ title: '', symptoms_summary: '' })
+
   const [authMode, setAuthMode] = useState('login') // 'login' or 'register'
   const [authForm, setAuthForm] = useState({ name: '', email: '', password: '', password_confirmation: '' })
   const [authError, setAuthError] = useState(null)
@@ -81,6 +91,8 @@ function App() {
 
   const loadAdminCauses = async (categoryId) => {
     setSelectedCategoryId(categoryId)
+    setSelectedCauseId(null)
+    setAdminArticles([])
     try {
       const res = await axios.get(`${API_BASE}/admin/causes?category_id=${categoryId}`, { headers: authHeaders })
       setAdminCauses(res.data)
@@ -131,6 +143,101 @@ function App() {
     try {
       await axios.delete(`${API_BASE}/admin/causes/${id}`, { headers: authHeaders })
       loadAdminCauses(selectedCategoryId)
+    } catch (err) {
+      console.error(err)
+    }
+  }
+
+  // ---- Articles ----
+  const loadAdminArticles = async (causeId) => {
+    setSelectedCauseId(causeId)
+    setExpandedArticleId(null)
+    setAdminArticlesLoading(true)
+    try {
+      const res = await axios.get(`${API_BASE}/admin/articles?cause_id=${causeId}`, { headers: authHeaders })
+      setAdminArticles(res.data)
+    } catch (err) {
+      console.error(err)
+    } finally {
+      setAdminArticlesLoading(false)
+    }
+  }
+
+  const createArticle = async () => {
+    if (!newArticle.title.trim()) return
+    try {
+      await axios.post(
+        `${API_BASE}/admin/articles`,
+        { ...newArticle, cause_id: selectedCauseId },
+        { headers: authHeaders }
+      )
+      setNewArticle({ title: '', symptoms_summary: '', status: 'draft' })
+      loadAdminArticles(selectedCauseId)
+    } catch (err) {
+      console.error(err.response?.data)
+    }
+  }
+
+  const startEditArticle = (article) => {
+    setEditingArticleId(article.id)
+    setEditArticleForm({ title: article.title, symptoms_summary: article.symptoms_summary || '' })
+  }
+
+  const saveEditArticle = async (id) => {
+    try {
+      await axios.patch(`${API_BASE}/admin/articles/${id}`, editArticleForm, { headers: authHeaders })
+      setEditingArticleId(null)
+      loadAdminArticles(selectedCauseId)
+    } catch (err) {
+      console.error(err.response?.data)
+    }
+  }
+
+  const toggleArticleStatus = async (article) => {
+    try {
+      await axios.patch(
+        `${API_BASE}/admin/articles/${article.id}`,
+        { status: article.status === 'draft' ? 'published' : 'draft' },
+        { headers: authHeaders }
+      )
+      loadAdminArticles(selectedCauseId)
+    } catch (err) {
+      console.error(err)
+    }
+  }
+
+  const deleteArticle = async (id) => {
+    if (!confirm('Delete this article and all its steps?')) return
+    try {
+      await axios.delete(`${API_BASE}/admin/articles/${id}`, { headers: authHeaders })
+      if (expandedArticleId === id) setExpandedArticleId(null)
+      loadAdminArticles(selectedCauseId)
+    } catch (err) {
+      console.error(err)
+    }
+  }
+
+  // ---- Steps ----
+  const createStep = async (articleId) => {
+    if (!newStep.instruction.trim()) return
+    try {
+      await axios.post(
+        `${API_BASE}/admin/steps`,
+        { ...newStep, article_id: articleId },
+        { headers: authHeaders }
+      )
+      setNewStep({ instruction: '', media_url: '', requires_confirmation: true })
+      loadAdminArticles(selectedCauseId)
+    } catch (err) {
+      console.error(err.response?.data)
+    }
+  }
+
+  const deleteStep = async (id) => {
+    if (!confirm('Delete this step?')) return
+    try {
+      await axios.delete(`${API_BASE}/admin/steps/${id}`, { headers: authHeaders })
+      loadAdminArticles(selectedCauseId)
     } catch (err) {
       console.error(err)
     }
@@ -371,6 +478,7 @@ function App() {
 
             {adminLoading && <p className="text-slate-400 text-sm">Loading...</p>}
 
+            {/* ---- Categories ---- */}
             <div className="space-y-2 mb-4">
               {adminCategories.map((cat) => (
                 <div
@@ -421,24 +529,36 @@ function App() {
               </div>
             </div>
 
+            {/* ---- Causes ---- */}
             {selectedCategoryId && (
-              <div>
+              <div className="mb-6">
                 <h3 className="text-sm font-semibold text-slate-700 mb-2">
                   Causes for {adminCategories.find((c) => c.id === selectedCategoryId)?.name}
                 </h3>
 
                 <div className="space-y-2 mb-4">
                   {adminCauses.map((cause) => (
-                    <div key={cause.id} className="border border-slate-200 rounded-lg p-3 flex items-center justify-between">
-                      <div>
-                        <span className="font-medium text-slate-800 text-sm">{cause.name}</span>
-                        <span className="text-xs text-slate-400 ml-2">
-                          prior: {(cause.base_prior * 100).toFixed(0)}%
-                        </span>
+                    <div
+                      key={cause.id}
+                      className={`border rounded-lg p-3 cursor-pointer transition ${
+                        selectedCauseId === cause.id ? 'border-indigo-400 bg-indigo-50' : 'border-slate-200 hover:border-indigo-300'
+                      }`}
+                      onClick={() => loadAdminArticles(cause.id)}
+                    >
+                      <div className="flex items-center justify-between">
+                        <div>
+                          <span className="font-medium text-slate-800 text-sm">{cause.name}</span>
+                          <span className="text-xs text-slate-400 ml-2">
+                            prior: {(cause.base_prior * 100).toFixed(0)}%
+                          </span>
+                        </div>
+                        <button
+                          onClick={(e) => { e.stopPropagation(); deleteCause(cause.id) }}
+                          className="text-xs text-red-500 hover:text-red-700"
+                        >
+                          Delete
+                        </button>
                       </div>
-                      <button onClick={() => deleteCause(cause.id)} className="text-xs text-red-500 hover:text-red-700">
-                        Delete
-                      </button>
                     </div>
                   ))}
                 </div>
@@ -474,6 +594,180 @@ function App() {
                   <button onClick={createCause} className="bg-purple-600 hover:bg-purple-700 text-white text-sm px-3 py-1.5 rounded">
                     Add cause
                   </button>
+                </div>
+              </div>
+            )}
+
+            {/* ---- Articles + Steps ---- */}
+            {selectedCauseId && (
+              <div>
+                <h3 className="text-sm font-semibold text-slate-700 mb-2">
+                  Articles for {adminCauses.find((c) => c.id === selectedCauseId)?.name}
+                </h3>
+
+                {adminArticlesLoading && <p className="text-slate-400 text-sm mb-2">Loading articles...</p>}
+
+                <div className="space-y-3 mb-4">
+                  {adminArticles.map((article) => (
+                    <div key={article.id} className="border border-slate-200 rounded-lg overflow-hidden">
+                      <div
+                        className="p-3 cursor-pointer hover:bg-slate-50"
+                        onClick={() => setExpandedArticleId(expandedArticleId === article.id ? null : article.id)}
+                      >
+                        <div className="flex items-center justify-between">
+                          <div className="flex items-center gap-2">
+                            <span className="text-xs text-slate-400">
+                              {expandedArticleId === article.id ? '▾' : '▸'}
+                            </span>
+                            {editingArticleId === article.id ? (
+                              <input
+                                type="text"
+                                className="border border-slate-300 rounded p-1 text-sm"
+                                value={editArticleForm.title}
+                                onClick={(e) => e.stopPropagation()}
+                                onChange={(e) => setEditArticleForm({ ...editArticleForm, title: e.target.value })}
+                              />
+                            ) : (
+                              <span className="font-medium text-slate-800 text-sm">{article.title}</span>
+                            )}
+                            <span className={`text-xs px-2 py-0.5 rounded-full ${
+                              article.status === 'published' ? 'bg-green-100 text-green-700' : 'bg-slate-100 text-slate-500'
+                            }`}>
+                              {article.status}
+                            </span>
+                            <span className="text-xs text-slate-400">
+                              {article.steps_count ?? article.steps?.length ?? 0} steps
+                            </span>
+                          </div>
+                          <div className="flex items-center gap-3" onClick={(e) => e.stopPropagation()}>
+                            {editingArticleId === article.id ? (
+                              <button onClick={() => saveEditArticle(article.id)} className="text-xs text-green-600 hover:text-green-800">
+                                Save
+                              </button>
+                            ) : (
+                              <button onClick={() => startEditArticle(article)} className="text-xs text-blue-600 hover:text-blue-800">
+                                Edit
+                              </button>
+                            )}
+                            <button onClick={() => toggleArticleStatus(article)} className="text-xs text-indigo-600 hover:text-indigo-800">
+                              {article.status === 'draft' ? 'Publish' : 'Unpublish'}
+                            </button>
+                            <button onClick={() => deleteArticle(article.id)} className="text-xs text-red-500 hover:text-red-700">
+                              Delete
+                            </button>
+                          </div>
+                        </div>
+                        {editingArticleId === article.id && (
+                          <textarea
+                            placeholder="Symptoms summary"
+                            className="w-full border border-slate-300 rounded p-2 text-sm mt-2"
+                            rows={2}
+                            value={editArticleForm.symptoms_summary}
+                            onClick={(e) => e.stopPropagation()}
+                            onChange={(e) => setEditArticleForm({ ...editArticleForm, symptoms_summary: e.target.value })}
+                          />
+                        )}
+                      </div>
+
+                      {expandedArticleId === article.id && (
+                        <div className="border-t border-slate-200 bg-slate-50 p-3">
+                          <ol className="space-y-2 mb-3">
+                            {(article.steps || [])
+                              .slice()
+                              .sort((a, b) => a.step_order - b.step_order)
+                              .map((step) => (
+                                <li key={step.id} className="flex items-start justify-between gap-2 bg-white border border-slate-200 rounded p-2">
+                                  <div className="flex gap-2 text-sm">
+                                    <span className="font-semibold text-slate-500">{step.step_order}.</span>
+                                    <div>
+                                      <p className="text-slate-700">{step.instruction}</p>
+                                      {step.media_url && (
+                                        <p className="text-xs text-blue-500 break-all">{step.media_url}</p>
+                                      )}
+                                      {!step.requires_confirmation && (
+                                        <p className="text-xs text-slate-400">No confirmation required</p>
+                                      )}
+                                    </div>
+                                  </div>
+                                  <button onClick={() => deleteStep(step.id)} className="text-xs text-red-500 hover:text-red-700 shrink-0">
+                                    Delete
+                                  </button>
+                                </li>
+                              ))}
+                            {(!article.steps || article.steps.length === 0) && (
+                              <p className="text-xs text-slate-400">No steps yet.</p>
+                            )}
+                          </ol>
+
+                          <div className="border border-dashed border-slate-300 rounded-lg p-3 bg-white">
+                            <p className="text-sm font-medium text-slate-600 mb-2">Add step</p>
+                            <textarea
+                              placeholder="Instruction"
+                              className="w-full border border-slate-300 rounded p-2 text-sm mb-2"
+                              rows={2}
+                              value={newStep.instruction}
+                              onChange={(e) => setNewStep({ ...newStep, instruction: e.target.value })}
+                            />
+                            <input
+                              type="text"
+                              placeholder="Media URL (optional)"
+                              className="w-full border border-slate-300 rounded p-2 text-sm mb-2"
+                              value={newStep.media_url}
+                              onChange={(e) => setNewStep({ ...newStep, media_url: e.target.value })}
+                            />
+                            <label className="flex items-center gap-2 text-xs text-slate-500 mb-2">
+                              <input
+                                type="checkbox"
+                                checked={newStep.requires_confirmation}
+                                onChange={(e) => setNewStep({ ...newStep, requires_confirmation: e.target.checked })}
+                              />
+                              Requires user confirmation
+                            </label>
+                            <button
+                              onClick={() => createStep(article.id)}
+                              className="bg-indigo-600 hover:bg-indigo-700 text-white text-sm px-3 py-1.5 rounded"
+                            >
+                              Add step
+                            </button>
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  ))}
+                  {!adminArticlesLoading && adminArticles.length === 0 && (
+                    <p className="text-xs text-slate-400">No articles yet.</p>
+                  )}
+                </div>
+
+                <div className="border border-dashed border-slate-300 rounded-lg p-3">
+                  <p className="text-sm font-medium text-slate-600 mb-2">Add article</p>
+                  <input
+                    type="text"
+                    placeholder="Title"
+                    className="w-full border border-slate-300 rounded p-2 text-sm mb-2"
+                    value={newArticle.title}
+                    onChange={(e) => setNewArticle({ ...newArticle, title: e.target.value })}
+                  />
+                  <textarea
+                    placeholder="Symptoms summary"
+                    className="w-full border border-slate-300 rounded p-2 text-sm mb-2"
+                    rows={2}
+                    value={newArticle.symptoms_summary}
+                    onChange={(e) => setNewArticle({ ...newArticle, symptoms_summary: e.target.value })}
+                  />
+                  <div className="flex items-center gap-2">
+                    <select
+                      className="border border-slate-300 rounded p-2 text-sm"
+                      value={newArticle.status}
+                      onChange={(e) => setNewArticle({ ...newArticle, status: e.target.value })}
+                    >
+                      <option value="draft">draft</option>
+                      <option value="published">published</option>
+                    </select>
+                    <button onClick={createArticle} className="bg-indigo-600 hover:bg-indigo-700 text-white text-sm px-3 py-1.5 rounded">
+                      Add article
+                    </button>
+                  </div>
                 </div>
               </div>
             )}
